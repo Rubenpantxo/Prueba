@@ -1,0 +1,374 @@
+<!DOCTYPE html><html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Flappy Hurdles — móvil OK</title>
+  <style>
+    :root { --bg:#0b1020; --fg:#e6eef7; --muted:#92a0b6; --accent:#39d353; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; }
+    .wrap { display: grid; place-items: center; min-height: 100dvh; padding: 12px; }
+    canvas { width: min(900px, 96vw); aspect-ratio: 16/9; background: linear-gradient(#7cc6ff 0 60%, #a2e7ff 60% 100%); border-radius: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.05); display:block; touch-action: manipulation; }
+    .hud { position: fixed; inset: 12px 12px auto auto; padding: 8px 12px; background: rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.08); border-radius: 10px; backdrop-filter: blur(6px); }
+    .hud strong { font-size: 18px; }
+    .controls { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn { border: 1px solid rgba(255,255,255,.12); color: var(--fg); background: rgba(0,0,0,.45); padding: 12px 14px; border-radius: 12px; cursor: pointer; user-select: none; }
+    .btn:active { transform: translateY(1px); }
+    .overlay { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .card { text-align: center; background: rgba(0,0,0,.50); padding: 16px 20px; border-radius: 14px; border: 1px solid rgba(255,255,255,.12); max-width: min(90vw, 720px); }
+    .card h1 { margin: 0 0 6px; font-size: clamp(18px, 3.2vw, 28px); }
+    .card p { margin: 6px 0; color: var(--muted); }
+    .accent { color: var(--accent); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="1280" height="720" aria-label="Flappy Hurdles"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="card" id="card">
+        <h1>Flappy Hurdles</h1>
+        <p>Pulsa o toca en el <strong>canvas</strong> o usa el botón SALTAR. Suma 1 punto por cada valla superada.</p>
+        <p>Controles: <span class="accent">tocar/clic o barra espaciadora</span>. Pausa: <span class="accent">P</span>. Reinicia: <span class="accent">R</span>.</p>
+        <p style="margin-top:8px">Empieza cuando pulses.</p>
+      </div>
+    </div>
+    <div class="hud"><strong>Puntos: <span id="score">0</span></strong></div>
+    <div class="controls">
+      <button class="btn" id="jump">Saltar</button>
+      <button class="btn" id="pause">Pausa</button>
+      <button class="btn" id="restart">Reiniciar</button>
+    </div>
+  </div><script>
+(() => {
+  const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  // HiDPI scaling
+  const resize = () => {
+    const cssW = canvas.clientWidth;
+    const cssH = canvas.clientHeight;
+    canvas.width = Math.round(cssW * DPR);
+    canvas.height = Math.round(cssH * DPR);
+  };
+  resize();
+  addEventListener('resize', resize);
+
+  // World
+  const W = () => canvas.width;
+  const H = () => canvas.height;
+  const GROUND_Y = () => Math.round(H() * 0.80);
+  const GRAVITY = () => 3800; // px/s^2
+  const JUMP_VY = () => -1050; // px/s
+  const RUN_SPEED = () => 360; // px/s base
+
+  // Athlete model
+  const athlete = {
+    x: () => Math.round(W() * 0.23),
+    y: GROUND_Y(),
+    vy: 0,
+    w: () => Math.max(24 * DPR, Math.round(W()*0.02)),
+    h: () => Math.max(64 * DPR, Math.round(H()*0.09)),
+    onGround: true,
+    pose: 'run', // run | jump | hurdle | fall
+    runT: 0, // seconds for leg cycle
+  };
+
+  // Hurdles
+  const hurdles = [];
+  const HURDLE = {
+    height: () => Math.max(90*DPR, Math.round(H()*0.14)), // aprox 1.06 m escalado
+    width: () => Math.max(90*DPR, Math.round(W()*0.07)),  // longitud de la valla
+    barThickness: () => Math.max(6*DPR, Math.round(H()*0.008)),
+    postWidth: () => Math.max(8*DPR, Math.round(W()*0.006)),
+    gap: () => Math.max(340*DPR, Math.round(W()*0.28)),
+  };
+
+  // Game state
+  let last = performance.now();
+  let running = false;
+  let paused = false;
+  let score = 0;
+  let speed = RUN_SPEED();
+  let spawnTimer = 0;
+
+  function reset() {
+    score = 0;
+    speed = RUN_SPEED();
+    hurdles.length = 0;
+    athlete.y = GROUND_Y();
+    athlete.vy = 0;
+    athlete.onGround = true;
+    athlete.pose = 'run';
+    spawnTimer = 0;
+    updateScore();
+    showOverlay(true);
+    running = false;
+  }
+
+  function updateScore(){ document.getElementById('score').textContent = score; }
+
+  function showOverlay(v){ document.getElementById('overlay').style.display = v ? 'grid' : 'none'; }
+
+  // Input
+  function jump() {
+    if (!running) { running = true; showOverlay(false); return; }
+    if (paused) return;
+    athlete.vy = JUMP_VY();
+    athlete.onGround = false;
+    athlete.pose = nearestHurdleIsClose() ? 'hurdle' : 'jump';
+  }
+  // móvil: listeners en el canvas con preventDefault
+  canvas.addEventListener('pointerdown', (e)=>{ e.preventDefault(); jump(); }, {passive:false});
+  canvas.addEventListener('click', (e)=>{ e.preventDefault(); jump(); }, {passive:false});
+  addEventListener('keydown', (e)=>{
+    if (e.code === 'Space') { e.preventDefault(); jump(); }
+    if (e.key === 'p' || e.key === 'P') togglePause();
+    if (e.key === 'r' || e.key === 'R') reset();
+  });
+
+  document.getElementById('jump').onclick = (e)=>{ e.preventDefault(); jump(); };
+  document.getElementById('pause').onclick = togglePause;
+  document.getElementById('restart').onclick = reset;
+
+  function togglePause(){ if (!running) return; paused = !paused; }
+
+  function nearestHurdleIsClose(){
+    const ax = athlete.x();
+    let minDx = Infinity;
+    for (const h of hurdles){ if (!h.passed) { const dx = h.x - ax; if (dx >= -10 && dx < minDx) minDx = dx; } }
+    return minDx < HURDLE.width()*0.9 && minDx > -HURDLE.width()*0.2;
+  }
+
+  // Spawn hurdles
+  function spawnHurdle(){
+    const y = GROUND_Y();
+    hurdles.push({ x: W() + HURDLE.width(), y, passed:false });
+  }
+
+  // Physics step
+  function step(dt){
+    if (!running || paused) return;
+
+    // Speed up slightly with score
+    speed = RUN_SPEED() + Math.min(240, score*12);
+
+    // Athlete
+    athlete.vy += GRAVITY() * dt;
+    athlete.y += athlete.vy * dt;
+    if (athlete.y > GROUND_Y()) { athlete.y = GROUND_Y(); athlete.vy = 0; athlete.onGround = true; athlete.pose = 'run'; }
+    if (athlete.vy > 900) athlete.pose = 'fall';
+    athlete.runT += dt * (athlete.onGround ? 4.2 : 2.0);
+
+    // Hurdles move
+    for (const h of hurdles){ h.x -= speed * dt; }
+
+    // Remove off-screen
+    while (hurdles.length && hurdles[0].x + HURDLE.width() < -80) hurdles.shift();
+
+    // Spawn timing
+    spawnTimer -= dt;
+    if (spawnTimer <= 0){
+      spawnHurdle();
+      const minGap = HURDLE.gap()/speed; // time to traverse gap
+      const extra = 0.5 + Math.random()*0.6; // random spacing
+      spawnTimer = minGap * (1.05 + extra);
+    }
+
+    // Scoring and collisions
+    for (const h of hurdles){
+      const ax = athlete.x();
+      const ay = athlete.y;
+      const aw = athlete.w();
+      const ah = athlete.h();
+
+      const barTop = GROUND_Y() - HURDLE.height();
+      const barBottom = barTop + HURDLE.barThickness();
+      const barLeft = h.x + HURDLE.postWidth();
+      const barRight = h.x + HURDLE.width() - HURDLE.postWidth();
+
+      const postL = {x:h.x, y:barTop, w:HURDLE.postWidth(), h:HURDLE.height()};
+      const postR = {x:h.x + HURDLE.width()-HURDLE.postWidth(), y:barTop, w:HURDLE.postWidth(), h:HURDLE.height()};
+      const barRect = {x:barLeft, y:barTop, w:barRight-barLeft, h:barBottom-barTop};
+      const aRect = {x:ax-aw*0.35, y:ay-ah, w:aw*0.7, h:ah};
+
+      if (rectsOverlap(aRect, postL) || rectsOverlap(aRect, postR) || rectsOverlap(aRect, barRect)) {
+        gameOver();
+        return;
+      }
+
+      if (!h.passed && barRight < ax) { h.passed = true; score += 1; updateScore(); }
+    }
+  }
+
+  function rectsOverlap(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+  function gameOver(){
+    running = false; paused = false;
+    draw(true);
+    const card = document.getElementById('card');
+    card.innerHTML = `<h1>Fin de carrera</h1><p>Puntuación: <span class="accent">${score}</span></p><p>Pulsa para reiniciar.</p>`;
+    showOverlay(true);
+  }
+
+  // Rendering
+  function draw(gameOverFlag=false){
+    // Sky
+    ctx.clearRect(0,0,W(),H());
+
+    // Track
+    const groundY = GROUND_Y();
+    // infield
+    ctx.fillStyle = '#3aa35c';
+    ctx.fillRect(0, groundY, W(), H()-groundY);
+    // track
+    const trackH = Math.max(80*DPR, Math.round(H()*0.08));
+    ctx.fillStyle = '#bd4b39';
+    ctx.fillRect(0, groundY-trackH, W(), trackH);
+    // track lines
+    ctx.strokeStyle = 'rgba(255,255,255,.9)';
+    ctx.lineWidth = 2*DPR; ctx.setLineDash([14*DPR, 14*DPR]);
+    ctx.beginPath();
+    ctx.moveTo(0, groundY-trackH*0.33); ctx.lineTo(W(), groundY-trackH*0.33);
+    ctx.moveTo(0, groundY-trackH*0.66); ctx.lineTo(W(), groundY-trackH*0.66);
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // Hurdles
+    for (const h of hurdles){ drawHurdle(h); }
+
+    // Athlete
+    drawAthlete();
+
+    // Paused overlay
+    if (paused && !gameOverFlag) {
+      ctx.fillStyle = 'rgba(0,0,0,.35)';
+      ctx.fillRect(0,0,W(),H());
+      ctx.fillStyle = '#fff';
+      ctx.font = `${24*DPR}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('Pausa', W()/2, H()/2);
+    }
+  }
+
+  function drawHurdle(h){
+    const baseY = GROUND_Y();
+    const topY = baseY - HURDLE.height();
+    const postW = HURDLE.postWidth();
+    const barTh = HURDLE.barThickness();
+
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.beginPath();
+    ctx.ellipse(h.x + HURDLE.width()*0.5, baseY+6*DPR, HURDLE.width()*0.42, 5*DPR, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // posts
+    ctx.fillStyle = '#2d2f35';
+    ctx.fillRect(h.x, topY, postW, HURDLE.height());
+    ctx.fillRect(h.x + HURDLE.width()-postW, topY, postW, HURDLE.height());
+    // bar
+    ctx.fillStyle = '#dfe5ee';
+    ctx.fillRect(h.x + postW, topY, HURDLE.width()-2*postW, barTh);
+    // feet
+    ctx.fillStyle = '#2d2f35';
+    ctx.fillRect(h.x - 6*DPR, baseY-4*DPR, postW+12*DPR, 4*DPR);
+    ctx.fillRect(h.x + HURDLE.width()-postW - 6*DPR, baseY-4*DPR, postW+12*DPR, 4*DPR);
+  }
+
+  function drawAthlete(){
+    const ax = athlete.x();
+    const ay = athlete.y;
+    const h = athlete.h();
+    const w = athlete.w();
+
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.beginPath();
+    ctx.ellipse(ax, GROUND_Y()+6*DPR, w*0.7, 6*DPR, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // Body proportions
+    const headR = h*0.16;
+    const torsoH = h*0.42;
+    const hipY = ay - torsoH;
+    const neckY = hipY - headR*1.6;
+
+    // Colors
+    const kit = { skin:'#ffddc1', singlet:'#2979ff', short:'#111827', shoe:'#e5e7eb' };
+
+    // Animated leg angles
+    const cycle = Math.sin(athlete.runT * Math.PI * 2);
+
+    // Pose-specific joint positions
+    let frontLeg = { hip: [ax, hipY], knee: [ax + w*0.15, ay - h*0.28], foot: [ax + w*0.22, ay] };
+    let rearLeg  = { hip: [ax, hipY], knee: [ax - w*0.12, ay - h*0.32], foot: [ax - w*0.16, ay] };
+    let arms = { l:[ax - w*0.22, hipY - h*0.28], r:[ax + w*0.22, hipY - h*0.16] };
+
+    if (athlete.pose === 'run'){
+      frontLeg.knee[1] = ay - h*0.30 - cycle*h*0.06;
+      frontLeg.foot[0] = ax + w*0.26;
+      rearLeg.knee[1] = ay - h*0.30 + cycle*h*0.06;
+      rearLeg.foot[0] = ax - w*0.20;
+      arms = { l:[ax - w*0.22, hipY - h*0.28 - cycle*h*0.05], r:[ax + w*0.22, hipY - h*0.16 + cycle*h*0.05] };
+    } else if (athlete.pose === 'hurdle'){
+      // Hurdling: lead leg straight forward, trail leg tucked
+      frontLeg = { hip:[ax, hipY], knee:[ax + w*0.40, ay - h*0.42], foot:[ax + w*0.52, ay - h*0.38] };
+      rearLeg  = { hip:[ax, hipY], knee:[ax - w*0.06, ay - h*0.46], foot:[ax + w*0.12, ay - h*0.20] };
+      arms = { l:[ax - w*0.30, hipY - h*0.48], r:[ax + w*0.24, hipY - h*0.36] };
+    } else if (athlete.pose === 'jump' || athlete.pose === 'fall'){
+      frontLeg = { hip:[ax, hipY], knee:[ax + w*0.18, ay - h*0.42], foot:[ax + w*0.26, ay - h*0.18] };
+      rearLeg  = { hip:[ax, hipY], knee:[ax - w*0.14, ay - h*0.34], foot:[ax - w*0.02, ay - h*0.10] };
+      arms = { l:[ax - w*0.24, hipY - h*0.40], r:[ax + w*0.18, hipY - h*0.30] };
+    }
+
+    // Torso
+    ctx.strokeStyle = kit.singlet; ctx.lineWidth = 6*DPR; ctx.lineCap='round';
+    line(ax, hipY, ax, neckY);
+
+    // Head
+    ctx.fillStyle = kit.skin;
+    circle(ax, neckY - headR*0.6, headR);
+
+    // Arms
+    ctx.strokeStyle = kit.skin; ctx.lineWidth = 6*DPR; ctx.lineCap='round';
+    line(ax, hipY - h*0.16, arms.l[0], arms.l[1]);
+    line(ax, hipY - h*0.16, arms.r[0], arms.r[1]);
+
+    // Shorts
+    ctx.strokeStyle = kit.short; ctx.lineWidth = 8*DPR;
+    line(ax, hipY, frontLeg.knee[0], frontLeg.knee[1]);
+    line(ax, hipY, rearLeg.knee[0], rearLeg.knee[1]);
+
+    // Lower legs
+    ctx.strokeStyle = kit.short; ctx.lineWidth = 6*DPR;
+    line(frontLeg.knee[0], frontLeg.knee[1], frontLeg.foot[0], frontLeg.foot[1]);
+    line(rearLeg.knee[0], rearLeg.knee[1], rearLeg.foot[0], rearLeg.foot[1]);
+
+    // Shoes
+    ctx.fillStyle = kit.shoe;
+    circle(frontLeg.foot[0], frontLeg.foot[1], 5*DPR);
+    circle(rearLeg.foot[0], rearLeg.foot[1], 5*DPR);
+
+    // Bib
+    ctx.fillStyle = '#e5e7eb';
+    const bibW = w*0.26, bibH = h*0.16;
+    ctx.fillRect(ax - bibW/2, hipY - bibH - 4*DPR, bibW, bibH);
+  }
+
+  function line(x1,y1,x2,y2){ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); }
+  function circle(x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
+
+  // Main loop with delta time
+  function loop(t){
+    const dt = Math.min(0.033, (t - last)/1000);
+    last = t;
+    step(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // Start state
+  reset();
+})();
+</script></body>
+</html>

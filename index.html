@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Imperdible Asistente Eléctrico</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="desktop">
+    <!-- Contenedor del avatar -->
+    <div id="avatar-container">
+      <img
+        id="avatar"
+        src="assets/imperdible_normal.png"
+        alt="Avatar imperdible"
+      />
+    </div>
+    <!-- Bocadillo de diálogo para mostrar respuestas -->
+    <div id="dialogue" class="hidden">
+      <div id="dialogue-content"></div>
+      <div id="dialogue-buttons">
+        <button id="yes-btn">Sí</button>
+        <button id="no-btn">No</button>
+      </div>
+    </div>
+    <!-- Área de entrada para preguntas -->
+    <div id="query-container">
+      <input
+        type="text"
+        id="question-input"
+        placeholder="Escribe tu pregunta sobre instalaciones eléctricas..."
+        autocomplete="off"
+      />
+      <button id="ask-btn">Preguntar</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

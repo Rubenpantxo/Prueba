@@ -1,148 +1,28 @@
-/*
- * Estilos para la aplicación web del imperdible asistente eléctrico.
- *
- * Se inspira en la estética nostálgica de los asistentes de Office de
- * principios de los años 2000 y, en particular, en el bocadillo de
- * diálogo de Clippy. Se emplean colores suaves, bordes redondeados y
- * una flecha que apunta hacia el avatar. También se incluye una
- * ligera animación que hace flotar al imperdible para darle vida.
- */
-
 body {
-  margin: 0;
-  padding: 0;
-  font-family: "Tahoma", "Verdana", sans-serif;
-  /* Color de fondo inspirado en el escritorio de Windows XP */
-  background: linear-gradient(to bottom, #5a85d6 0%, #88b3f0 100%);
-  height: 100vh;
-  overflow: hidden;
+	padding: 2rem;
+	font-family: -apple-system, BlinkMacSystemFont, "Arial", sans-serif;
 }
 
-/* Contenedor principal que hace las veces de "escritorio" */
-#desktop {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
+h1 {
+	font-size: 16px;
+	margin-top: 0;
 }
 
-/* Contenedor para el avatar. Se coloca en la parte inferior
-   izquierda y se aplica una animación de flotación para que
-   parezca que el imperdible respira o se mueve ligeramente */
-#avatar-container {
-  position: absolute;
-  bottom: 120px;
-  left: 40px;
-  width: 200px;
-  max-width: 30vw;
-  animation: float 4s ease-in-out infinite;
+p {
+	color: rgb(107, 114, 128);
+	font-size: 15px;
+	margin-bottom: 10px;
+	margin-top: 5px;
 }
 
-#avatar {
-  width: 100%;
-  height: auto;
-  transition: transform 0.3s ease;
+.card {
+	max-width: 620px;
+	margin: 0 auto;
+	padding: 16px;
+	border: 1px solid lightgray;
+	border-radius: 16px;
 }
 
-/* Cuadro de diálogo con estilo retro. Tiene un fondo amarillo pálido,
-   borde gris y una sombra ligera. Se posiciona junto al avatar y
-   aparece/desaparece mediante la clase `.hidden`. */
-#dialogue {
-  position: absolute;
-  bottom: 160px;
-  left: 260px;
-  max-width: 50vw;
-  min-width: 280px;
-  padding: 12px 12px 8px;
-  background-color: #fff9c4;
-  border: 2px solid #666;
-  border-radius: 8px;
-  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
-  color: #222;
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-/* La flecha del bocadillo que apunta al avatar. Se crea con
-   bordes transparentes y un triángulo orientado hacia la izquierda. */
-#dialogue::after {
-  content: "";
-  position: absolute;
-  left: -20px;
-  top: 30px;
-  width: 0;
-  height: 0;
-  border-top: 12px solid transparent;
-  border-bottom: 12px solid transparent;
-  border-right: 20px solid #fff9c4;
-  border-right-color: #fff9c4;
-}
-
-/* Botones dentro del cuadro de diálogo. Se alinean a la derecha
-   para imitar el comportamiento clásico y tienen aspecto de botón
-   3D sencillo. */
-#dialogue-buttons {
-  margin-top: 8px;
-  text-align: right;
-}
-
-#dialogue-buttons button {
-  margin-left: 8px;
-  padding: 4px 12px;
-  font-size: 14px;
-  border: 1px solid #666;
-  border-radius: 3px;
-  background-color: #e7e7e7;
-  color: #000;
-  cursor: pointer;
-}
-
-/* Al pasar el ratón, oscurecer ligeramente el botón */
-#dialogue-buttons button:hover {
-  background-color: #d0d0d0;
-}
-
-/* Oculta el cuadro de diálogo cuando no haya mensaje */
-.hidden {
-  display: none;
-}
-
-/* Contenedor para la entrada de preguntas y el botón de envío */
-#query-container {
-  position: absolute;
-  left: 20px;
-  right: 20px;
-  bottom: 20px;
-  display: flex;
-  gap: 8px;
-}
-
-#question-input {
-  flex: 1;
-  padding: 8px;
-  font-size: 16px;
-  border: 1px solid #666;
-  border-radius: 3px;
-}
-
-#ask-btn {
-  padding: 8px 16px;
-  font-size: 16px;
-  border: 1px solid #666;
-  border-radius: 3px;
-  background-color: #e7e7e7;
-  cursor: pointer;
-}
-
-#ask-btn:hover {
-  background-color: #d0d0d0;
-}
-
-/* Animación simple para que el avatar flote hacia arriba y hacia abajo */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
+.card p:last-child {
+	margin-bottom: 0;
 }
